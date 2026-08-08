@@ -35,18 +35,12 @@ curl -X PUT -H "Content-Type: application/json" -d "{\"ok\":true}" "https://sola
 
 ---
 
-## ขั้นที่ 3 — เอาโค้ดขึ้น GitHub
+## ขั้นที่ 3 — เอาโค้ดขึ้น GitHub ✅ เสร็จแล้ว
 
-โฟลเดอร์ `SOLAR` ทั้งอันเลย (มี `.gitignore` กัน `.env` หลุดไว้ให้แล้ว)
+repo: https://github.com/P25o/SOLAR (public · branch `master`)
 
-```bash
-git init
-git add .
-git commit -m "solar charging station"
-git branch -M main
-git remote add origin https://github.com/ชื่อผู้ใช้/solar.git
-git push -u origin main
-```
+ครั้งต่อไปที่แก้โค้ดแล้วอยากอัปขึ้น: เปิด GitHub Desktop → ใส่ข้อความในช่อง Summary →
+**Commit to master** → **Push origin**
 
 ---
 
@@ -70,12 +64,12 @@ git push -u origin main
    | `STRIPE_SECRET_KEY` | `sk_test_...` จากขั้นที่ 2 |
    | `STRIPE_WEBHOOK_SECRET` | เว้นว่างไว้ก่อน เดี๋ยวได้จากขั้นที่ 5 |
    | `FIREBASE_DB_URL` | `https://solar-station-5b0a8-default-rtdb.asia-southeast1.firebasedatabase.app` |
-   | `PUBLIC_WEB_URL` | `https://ชื่อผู้ใช้.github.io/solar/pay.html` |
+   | `PUBLIC_WEB_URL` | `https://p25o.github.io/SOLAR/pay.html` |
    | `DEFAULT_STATION_ID` | `station_01` |
    | `DEMO_MODE` | `true` |
 
 5. กด **Create Web Service** รอ deploy ~2 นาที
-6. จดที่อยู่ที่ได้ไว้ เช่น `https://solar-xxxx.onrender.com`
+6. จดที่อยู่ที่ได้ไว้ เช่น `https://solar-station-fa9g.onrender.com`
 
 **เช็กว่าผ่าน:** เปิดที่อยู่นั้นในเบราว์เซอร์ ต้องเห็น
 
@@ -88,7 +82,7 @@ git push -u origin main
 ## ขั้นที่ 5 — ต่อ Webhook ของ Stripe
 
 1. Stripe Dashboard → **Developers → Webhooks → Add endpoint**
-2. **Endpoint URL:** `https://solar-xxxx.onrender.com/api/webhook`
+2. **Endpoint URL:** `https://solar-station-fa9g.onrender.com/api/webhook`
 3. **Select events** เลือก 4 ตัวนี้:
    - `checkout.session.completed`
    - `checkout.session.async_payment_succeeded`
@@ -105,14 +99,18 @@ git push -u origin main
 2. แก้ `pay.html` บรรทัด `API_BASE` ให้เป็นที่อยู่ Render จริง
 
    ```js
-   API_BASE: 'https://solar-xxxx.onrender.com',
+   API_BASE: 'https://solar-station-fa9g.onrender.com',
    ```
 
-3. push ขึ้น GitHub
-4. GitHub → repo → **Settings → Pages** → Source เลือก `main` / `root` → Save
-5. รอ ~1 นาที จะได้ 2 หน้า:
-   - `https://ชื่อผู้ใช้.github.io/solar/` — หน้า Dashboard พลังงาน
-   - `https://ชื่อผู้ใช้.github.io/solar/pay.html` — หน้าจ่ายเงิน
+3. push ขึ้น GitHub (GitHub Desktop → Commit to master → Push origin)
+4. https://github.com/P25o/SOLAR/settings/pages
+   → Branch เลือก **`master`** / **`/ (root)`** → **Save**
+
+   ⚠️ ต้องเลือก `master` ไม่ใช่ `main` — repo นี้ใช้ชื่อ branch ว่า master
+
+5. รอ ~1-2 นาที จะได้ 2 หน้า:
+   - https://p25o.github.io/SOLAR/ — หน้า Dashboard พลังงาน
+   - https://p25o.github.io/SOLAR/pay.html — หน้าจ่ายเงิน
 
 ---
 
