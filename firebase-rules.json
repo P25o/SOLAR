@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "live": {
+      ".read": true,
+      ".write": true
+    },
+    "history": {
+      ".read": true,
+      ".write": true
+    },
+    "stations": {
+      ".read": true,
+      ".write": true
+    },
+    "payments": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar Monitor — Energy Digital Twin</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#080b14; --panel:#0f1626; --card:#131b2e;
+    --card-border:rgba(148,163,184,.16); --card-border-hi:rgba(56,189,248,.6);
+    --text:#eef1f8; --text-dim:#9aa5bd; --text-faint:#697388;
+    --cyan:#38bdf8; --green:#22c55e; --green-glow:rgba(34,197,94,.5);
+    --amber:#f59e0b; --amber-glow:rgba(245,158,11,.5);
+    --red:#ef4444; --red-glow:rgba(239,68,68,.55); --gray:#6b7688;
+    --acc-green-a:#4ade80; --acc-green-b:#059669;
+    --acc-violet-a:#c084fc; --acc-violet-b:#7c3aed;
+    --acc-amber-a:#fbbf24; --acc-amber-b:#ea580c;
+    --acc-cyan-a:#22d3ee; --acc-cyan-b:#0891b2;
+    --acc-red-a:#f87171; --acc-red-b:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:radial-gradient(1200px 600px at 15% -10%,#132848 0%,transparent 60%),
+               radial-gradient(1000px 550px at 100% 0%,#1b1240 0%,transparent 55%),
+               radial-gradient(900px 500px at 50% 110%,#0d2e2a 0%,transparent 50%), var(--bg);
+    color:var(--text); font-family:'Sarabun',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    min-height:100vh; font-size:16px;
+  }
+  .app{max-width:1440px;margin:0 auto;padding:18px 20px 40px;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    padding:12px 20px;margin-bottom:18px;background:var(--panel);border:1px solid var(--card-border);border-radius:16px;
+    box-shadow:0 12px 30px -16px rgba(0,0,0,.6);}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--gray);box-shadow:0 0 8px transparent;transition:.3s;}
+  .brand .dot.live{background:var(--green);box-shadow:0 0 12px var(--green-glow);animation:pulse 2s infinite;}
+  .brand .dot.offline{background:var(--red);box-shadow:0 0 12px var(--red-glow);}
+  .conn-label{font-size:12.5px;color:var(--text-faint);}
+  nav.tabs{position:relative;display:flex;gap:4px;flex-wrap:wrap;}
+  nav.tabs button{position:relative;z-index:2;color:var(--text-dim);background:none;border:none;font-size:15px;font-weight:600;
+    padding:9px 16px;border-radius:10px;cursor:pointer;font-family:inherit;transition:color .2s;}
+  nav.tabs button:hover{color:var(--text);}
+  nav.tabs button.active{color:#04121f;}
+  .tab-indicator{position:absolute;z-index:1;top:0;left:0;height:100%;border-radius:10px;
+    background:linear-gradient(120deg,var(--cyan),var(--acc-violet-a));transition:left .25s cubic-bezier(.4,0,.2,1),width .25s cubic-bezier(.4,0,.2,1);
+    box-shadow:0 4px 16px -4px rgba(56,189,248,.6);}
+  .clock{font-size:13px;color:var(--text-faint);font-variant-numeric:tabular-nums;text-align:right;}
+
+  .tabpanel{display:none;}
+  .tabpanel.active{display:block;}
+
+  h1.pagetitle{font-size:23px;margin:4px 4px 18px;font-weight:800;}
+  h1.pagetitle span{color:var(--text-dim);font-weight:500;font-size:14px;margin-left:10px;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:18px;}
+  .card{position:relative;overflow:hidden;background:linear-gradient(165deg,var(--card),#101830);
+    border:1px solid var(--card-border);border-radius:16px;padding:18px;
+    box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 14px 32px -18px rgba(0,0,0,.7);
+    transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease;}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,var(--a,#334155),var(--b,#1e293b));}
+  .card:hover{transform:translateY(-4px);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 24px 44px -18px rgba(0,0,0,.8);}
+  .card.acc-green{--a:var(--acc-green-a);--b:var(--acc-green-b);}
+  .card.acc-violet{--a:var(--acc-violet-a);--b:var(--acc-violet-b);}
+  .card.acc-amber{--a:var(--acc-amber-a);--b:var(--acc-amber-b);}
+  .card.acc-cyan{--a:var(--acc-cyan-a);--b:var(--acc-cyan-b);}
+  .card.acc-red{--a:var(--acc-red-a);--b:var(--acc-red-b);}
+  .icon-chip{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    font-size:19px;margin-bottom:10px;background:color-mix(in srgb, var(--a,#38bdf8) 22%, transparent);
+    border:1px solid color-mix(in srgb, var(--a,#38bdf8) 45%, transparent);}
+  .card h3{margin:0 0 4px;font-size:13px;color:var(--text-faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+  .card .big{font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;margin:4px 0;}
+  .card .unit{font-size:16px;color:var(--text-dim);font-weight:600;margin-left:2px;}
+  .card .sub{font-size:12.5px;color:var(--text-faint);}
+  .badge-live{font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,.14);
+    border:1px solid rgba(34,197,94,.4);padding:3px 8px;border-radius:999px;float:right;}
+
+  @keyframes cardIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+
+  .chart-card{background:linear-gradient(165deg,var(--card),#101830);border:1px solid var(--card-border);
+    border-radius:16px;padding:18px;margin-bottom:18px;box-shadow:0 14px 32px -18px rgba(0,0,0,.7);}
+  .chart-card h3{margin:0 0 12px;font-size:13px;color:var(--text-faint);font-weight:700;text-transform:uppercase;}
+  .chart-card svg{width:100%;height:100px;display:block;}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px;}
+  table th{text-align:left;color:var(--text-faint);font-weight:700;font-size:12px;text-transform:uppercase;
+    padding:10px 12px;border-bottom:1px solid var(--card-border);}
+  table td{padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.07);color:var(--text-dim);}
+  table td b{color:var(--text);}
+  table tr:hover td{background:rgba(148,163,184,.04);}
+  .pill{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;}
+  .pill.good{color:var(--green);background:rgba(34,197,94,.14);}
+  .pill.mid{color:var(--amber);background:rgba(245,158,11,.14);}
+  .pill.low{color:var(--red);background:rgba(239,68,68,.14);}
+  .empty-note{color:var(--text-faint);font-size:13.5px;padding:16px 2px;}
+
+  /* ===== Health check ===== */
+  .stage{display:flex;gap:16px;align-items:flex-start;}
+  .diagram-wrap{position:relative;flex:1 1 76%;aspect-ratio:16/9;
+    background:linear-gradient(180deg,#0e1730,#0a0f1c);border:1px solid var(--card-border);border-radius:18px;overflow:hidden;
+    box-shadow:0 20px 50px -24px rgba(0,0,0,.8);}
+  .diagram-wrap svg.main{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  .device-card{--x:0;--y:0;position:absolute;left:calc(var(--x)*1%);top:calc(var(--y)*1%);width:216px;
+    background:rgba(19,27,46,.94);backdrop-filter:blur(8px);border:1px solid var(--card-border);border-radius:13px;
+    padding:12px 14px;box-shadow:0 10px 26px rgba(0,0,0,.4);transition:.2s;cursor:pointer;}
+  .device-card.na{opacity:.6;}
+  .device-card:hover,.device-card.active{border-color:var(--card-border-hi);transform:translateY(-3px) scale(1.02);
+    box-shadow:0 16px 34px rgba(0,0,0,.5);}
+  .dc-title{font-size:12px;font-weight:700;letter-spacing:.3px;color:var(--text-dim);display:flex;
+    align-items:center;justify-content:space-between;margin-bottom:8px;text-transform:uppercase;}
+  .status-chip{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;letter-spacing:.3px;}
+  .status-chip.healthy{color:var(--green);background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.4);}
+  .status-chip.warning{color:var(--amber);background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);}
+  .status-chip.critical{color:var(--red);background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.45);}
+  .status-chip.na{color:var(--gray);background:rgba(107,118,136,.14);border:1px solid rgba(107,118,136,.4);}
+  .dc-row{display:flex;justify-content:space-between;font-size:13.5px;color:var(--text-dim);padding:3px 0;}
+  .dc-row b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+  .dc-note{margin-top:7px;font-size:11.5px;color:var(--text-faint);line-height:1.45;}
+  .dc-hint{margin-top:8px;font-size:10.5px;color:var(--cyan);}
+
+  .health-panel{flex:0 0 310px;background:var(--panel);border:1px solid var(--card-border);border-radius:18px;
+    padding:18px;position:sticky;top:16px;box-shadow:0 14px 32px -18px rgba(0,0,0,.7);}
+  .health-panel h3{margin:0 0 3px;font-size:16px;font-weight:800;}
+  .health-panel .sub{font-size:12px;color:var(--text-faint);margin-bottom:14px;}
+  .score-ring{display:flex;align-items:center;gap:14px;padding:12px 14px;
+    background:linear-gradient(135deg,rgba(56,189,248,.1),rgba(124,58,237,.08));
+    border:1px solid var(--card-border);border-radius:14px;margin-bottom:16px;}
+  .score-num{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .score-label{font-size:11.5px;color:var(--text-faint);line-height:1.35;}
+  #alertList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:290px;overflow-y:auto;}
+  #alertList li{display:flex;gap:10px;align-items:flex-start;padding:10px 11px;border-radius:11px;
+    background:rgba(148,163,184,.06);border:1px solid var(--card-border);font-size:13px;}
+  #alertList li.healthy{border-left:3px solid var(--green);}
+  #alertList li.warning{border-left:3px solid var(--amber);}
+  #alertList li.critical{border-left:3px solid var(--red);}
+  #alertList li.na{border-left:3px solid var(--gray);}
+  #alertList .txt b{display:block;font-weight:700;color:var(--text);}
+  #alertList .txt span{color:var(--text-faint);font-size:11.5px;}
+  .legend{display:flex;flex-direction:column;gap:7px;margin-top:16px;padding-top:14px;border-top:1px solid var(--card-border);}
+  .legend .row{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text-dim);}
+  .legend .sw{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+  .demo-controls{margin-top:16px;padding-top:14px;border-top:1px solid var(--card-border);}
+  .demo-controls h4{margin:0 0 9px;font-size:12px;color:var(--text-faint);font-weight:700;text-transform:uppercase;}
+  .demo-controls .btnrow{display:flex;flex-wrap:wrap;gap:7px;}
+  .demo-controls button{font-size:11.5px;font-weight:600;color:var(--text-dim);background:rgba(148,163,184,.08);
+    border:1px solid var(--card-border);border-radius:9px;padding:7px 9px;cursor:pointer;transition:.15s;}
+  .demo-controls button:hover{color:var(--text);border-color:var(--card-border-hi);transform:translateY(-1px);}
+  .demo-controls button.reset{color:var(--green);border-color:rgba(34,197,94,.4);}
+
+  .flow{stroke-linecap:round;fill:none;}
+  .flow-anim{stroke-dasharray:6 8;animation:flowmove 1s linear infinite;}
+  .leader{stroke:rgba(148,163,184,.28);stroke-width:1.4;stroke-dasharray:3 4;fill:none;}
+  .devlabel{font-size:16px;fill:var(--text-faint);font-weight:700;}
+  .rotor{transform-origin:center;animation:spin 6s linear infinite;}
+  .glow-node{filter:drop-shadow(0 0 7px currentColor);}
+  .devgroup{cursor:pointer;}
+  @keyframes flowmove{to{stroke-dashoffset:-28;}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+  footer.statusbar{margin-top:16px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12.5px;
+    color:var(--text-faint);padding:12px 18px;background:var(--panel);border:1px solid var(--card-border);border-radius:14px;}
+  .warn-banner{display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#fca5a5;
+    padding:12px 16px;border-radius:12px;font-size:13.5px;margin-bottom:16px;}
+
+  /* ===== Toasts ===== */
+  #toastContainer{position:fixed;top:18px;right:18px;z-index:1000;display:flex;flex-direction:column;gap:10px;
+    max-width:320px;width:calc(100% - 36px);}
+  .toast{display:flex;gap:11px;align-items:flex-start;background:var(--panel);border:1px solid var(--card-border);
+    border-left:4px solid var(--c,var(--cyan));border-radius:13px;padding:13px 15px;font-size:13.5px;
+    box-shadow:0 16px 34px rgba(0,0,0,.5);animation:toastIn .35s cubic-bezier(.34,1.56,.64,1);}
+  .toast.out{animation:toastOut .28s ease forwards;}
+  .toast .t-icon{font-size:18px;line-height:1;}
+  .toast b{display:block;color:var(--text);}
+  .toast span{color:var(--text-faint);font-size:12px;}
+  @keyframes toastIn{from{transform:translateX(40px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+  @keyframes toastOut{to{transform:translateX(40px);opacity:0;}}
+
+  /* ===== Modal popup ===== */
+  .modal-overlay{position:fixed;inset:0;background:rgba(4,7,15,.68);backdrop-filter:blur(5px);
+    display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;}
+  .modal-overlay.show{display:flex;}
+  .modal-box{width:100%;max-width:440px;background:linear-gradient(165deg,var(--panel),#0c1226);
+    border:1px solid var(--card-border-hi);border-radius:20px;padding:24px;box-shadow:0 40px 90px rgba(0,0,0,.65);
+    animation:modalPop .28s cubic-bezier(.34,1.56,.64,1);}
+  @keyframes modalPop{from{transform:scale(.9);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+  .modal-head h2{margin:0;font-size:20px;font-weight:800;}
+  .modal-close{background:rgba(148,163,184,.1);border:1px solid var(--card-border);color:var(--text-dim);
+    width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:16px;line-height:1;}
+  .modal-close:hover{color:var(--text);}
+  .modal-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(148,163,184,.08);font-size:14.5px;}
+  .modal-row b{font-variant-numeric:tabular-nums;}
+  .modal-note{margin-top:14px;font-size:13px;color:var(--text-dim);line-height:1.6;
+    background:rgba(148,163,184,.06);border-radius:11px;padding:12px 14px;}
+
+  @media (max-width:900px){
+    .stage{flex-direction:column;}
+    .health-panel{flex:1 1 auto;width:100%;position:static;}
+    .diagram-wrap{aspect-ratio:4/5;}
+    .device-card{width:46%;}
+  }
+  @media (max-width:620px){
+    .device-card{position:static !important;width:100%;margin-bottom:9px;}
+    .diagram-wrap{aspect-ratio:auto;height:300px;}
+    #toastContainer{left:12px;right:12px;max-width:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="toastContainer"></div>
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand"><span class="dot" id="connDot"></span> Solar Monitor <span class="conn-label" id="connLabel">กำลังเชื่อมต่อ…</span></div>
+    <nav class="tabs" id="tabsNav">
+      <span class="tab-indicator" id="tabIndicator"></span>
+      <button class="active" data-tab="overview">Overview</button>
+      <button data-tab="forecast">AI Forecast</button>
+      <button data-tab="hardware">Hardware</button>
+      <button data-tab="health">Health Check</button>
+    </nav>
+    <div class="clock"><div id="clockTime">--:--:--</div><div id="clockDate">--</div></div>
+  </div>
+
+  <div class="warn-banner" id="permWarning">
+    อ่านข้อมูลจาก Firebase ไม่ได้ — ตรวจสอบ Realtime Database Rules ว่าอนุญาตให้อ่านแบบ public หรือ auth != null หรือยัง
+  </div>
+
+  <!-- ============ OVERVIEW ============ -->
+  <section class="tabpanel active" id="tab-overview">
+    <h1 class="pagetitle">Live Sensor Data <span>📡 Battery (Pin 35) + Motor Generator (Pin 34)</span></h1>
+    <div class="grid">
+      <div class="card acc-green"><span class="badge-live">LIVE</span><div class="icon-chip">🔋</div><h3>Battery Level</h3>
+        <div class="big"><span id="ov-battPct">--</span><span class="unit">%</span></div></div>
+      <div class="card acc-violet"><span class="badge-live">LIVE</span><div class="icon-chip">⚡</div><h3>Motor Generator</h3>
+        <div class="big"><span id="ov-genV">--</span><span class="unit">V</span></div></div>
+      <div class="card acc-cyan"><div class="icon-chip">🔌</div><h3>Battery Voltage</h3>
+        <div class="big"><span id="ov-battV">--</span><span class="unit">V</span></div></div>
+      <div class="card acc-amber"><div class="icon-chip">🕒</div><h3>System Active</h3>
+        <div class="big" id="ov-uptime" style="font-size:30px;">00:00:00</div></div>
+    </div>
+    <div class="chart-card"><h3>Battery Trend (%)</h3><svg viewBox="0 0 600 100" preserveAspectRatio="none"><polyline id="sparkBatt" fill="none" stroke="#4ade80" stroke-width="2.5"></polyline></svg></div>
+    <div class="chart-card"><h3>Generator Trend (V)</h3><svg viewBox="0 0 600 100" preserveAspectRatio="none"><polyline id="sparkGen" fill="none" stroke="#c084fc" stroke-width="2.5"></polyline></svg></div>
+  </section>
+
+  <!-- ============ AI FORECAST ============ -->
+  <section class="tabpanel" id="tab-forecast">
+    <h1 class="pagetitle">Predicted Yield Table <span>ค่าเฉลี่ยจากข้อมูลจริง 3 วันย้อนหลัง (Battery + Generator)</span></h1>
+    <div class="chart-card">
+      <table>
+        <thead><tr><th>ช่วงเวลา</th><th>🔋 แบตเตอรี่เฉลี่ย (V)</th><th>⚡ เจนเนอเรเตอร์เฉลี่ย (V)</th><th>สถานะ</th></tr></thead>
+        <tbody id="forecastBody"><tr><td colspan="4" class="empty-note">กำลังโหลดข้อมูล...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ HARDWARE ============ -->
+  <section class="tabpanel" id="tab-hardware">
+    <h1 class="pagetitle">Physical Hardware Status <span>Real-time microcontroller status</span></h1>
+    <div class="grid">
+      <div class="card acc-amber"><div class="icon-chip">🧠</div><h3>Free Heap Memory</h3>
+        <div class="big"><span id="hw-heap">--</span><span class="unit">KB</span></div>
+        <div class="sub">ต่ำกว่า ~20 KB เสี่ยงแฮงค์/รีสตาร์ท</div></div>
+      <div class="card acc-cyan"><div class="icon-chip">⏱️</div><h3>Uptime</h3><div class="big" id="hw-uptime" style="font-size:28px;">--</div>
+        <div class="sub">เวลาตั้งแต่บอร์ดเปิด/รีสตาร์ทล่าสุด</div></div>
+      <div class="card acc-violet"><div class="icon-chip">🌐</div><h3>IP Address</h3><div class="big" id="hw-ip" style="font-size:22px;">--</div></div>
+      <div class="card" id="hw-connCard"><div class="icon-chip">📶</div><h3>Connection</h3><div class="big" id="hw-conn" style="font-size:26px;">--</div>
+        <div class="sub" id="hw-connSub">รอข้อมูล...</div></div>
+    </div>
+  </section>
+
+  <!-- ============ HEALTH CHECK ============ -->
+  <section class="tabpanel" id="tab-health">
+    <h1 class="pagetitle">Device Health Monitoring <span>ตรวจสอบสถานะอุปกรณ์แบบเรียลไทม์ · Digital Twin · คลิกที่อุปกรณ์เพื่อดูรายละเอียด</span></h1>
+    <div class="stage">
+      <div class="diagram-wrap" id="diagramWrap">
+        <svg class="main" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="gradSolar" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient>
+            <linearGradient id="gradWind" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c084fc"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+            <linearGradient id="gradBox" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e293b"/><stop offset="1" stop-color="#0f172a"/></linearGradient>
+          </defs>
+          <path class="leader" d="M338,160 L470,150"></path>
+          <path class="leader" d="M338,440 L420,430"></path>
+          <path class="leader" d="M338,670 L590,470"></path>
+          <path class="leader" d="M1262,350 L740,330"></path>
+          <path class="leader" d="M1262,570 L1000,420"></path>
+          <path id="flowSolar" class="flow flow-anim" d="M620,220 C620,270 600,270 640,320" stroke="#6b7688" stroke-width="4"></path>
+          <path id="flowWind" class="flow flow-anim" d="M430,430 C520,430 560,400 660,350" stroke="#a78bfa" stroke-width="4"></path>
+          <path id="flowBatt" class="flow flow-anim" d="M680,400 C680,430 680,440 680,460" stroke="#22c55e" stroke-width="4"></path>
+          <path id="flowUsb" class="flow flow-anim" d="M780,400 C830,400 860,400 900,400" stroke="#6b7688" stroke-width="4"></path>
+          <rect x="606" y="330" width="10" height="230" fill="#2a3550"></rect>
+          <rect x="866" y="330" width="10" height="230" fill="#2a3550"></rect>
+          <g id="devSolar" class="devgroup" data-device="solar"><polygon points="460,150 780,150 730,225 410,225" fill="url(#gradSolar)" stroke="#60a5fa" stroke-width="2"></polygon>
+            <g stroke="#bfdbfe" stroke-width="1.2" opacity=".55"><line x1="492" y1="150" x2="446" y2="225"></line><line x1="524" y1="150" x2="482" y2="225"></line>
+            <line x1="556" y1="150" x2="518" y2="225"></line><line x1="588" y1="150" x2="554" y2="225"></line>
+            <line x1="620" y1="150" x2="590" y2="225"></line><line x1="652" y1="150" x2="626" y2="225"></line>
+            <line x1="684" y1="150" x2="662" y2="225"></line><line x1="716" y1="150" x2="698" y2="225"></line>
+            <line x1="416" y1="187" x2="774" y2="187"></line></g>
+            <text x="530" y="140" class="devlabel">Solar Panel</text></g>
+          <g id="devWind" class="devgroup" data-device="wind"><rect x="895" y="220" width="10" height="210" fill="#2a3550"></rect>
+            <g class="rotor" transform="translate(900,220)"><ellipse cx="0" cy="-58" rx="10" ry="58" fill="url(#gradWind)"></ellipse>
+            <ellipse cx="50" cy="30" rx="10" ry="58" fill="url(#gradWind)" transform="rotate(120 0 0)"></ellipse>
+            <ellipse cx="-50" cy="30" rx="10" ry="58" fill="url(#gradWind)" transform="rotate(240 0 0)"></ellipse>
+            <circle r="10" fill="#e9d5ff"></circle></g>
+            <text x="850" y="185" class="devlabel">Generator</text></g>
+          <g id="devWindCtrl" class="devgroup" data-device="wind"><rect x="400" y="410" width="60" height="34" rx="6" fill="url(#gradBox)" stroke="#a78bfa" stroke-width="1.5"></rect>
+            <text x="395" y="463" class="devlabel" font-size="12">Sensor Link</text></g>
+          <g id="devController" class="devgroup" data-device="controller"><rect x="616" y="320" width="140" height="90" rx="10" fill="url(#gradBox)" stroke="#fb923c" stroke-width="2"></rect>
+            <rect x="636" y="336" width="100" height="34" rx="4" fill="#0d1526" stroke="#fbbf24" stroke-width="1"></rect>
+            <circle cx="650" cy="390" r="6" fill="#22c55e"></circle><circle cx="672" cy="390" r="6" fill="#38bdf8"></circle>
+            <circle cx="694" cy="390" r="6" fill="#f59e0b"></circle>
+            <text x="600" y="308" class="devlabel">CYD Board (ESP32)</text></g>
+          <g id="devBattery" class="devgroup" data-device="battery"><rect x="618" y="460" width="130" height="80" rx="8" fill="url(#gradBox)" stroke="#4ade80" stroke-width="2"></rect>
+            <rect x="668" y="452" width="30" height="10" rx="2" fill="#4ade80"></rect>
+            <path d="M690,478 L672,500 L684,500 L666,522 L698,494 L686,494 Z" fill="#4ade80"></path>
+            <text x="618" y="448" class="devlabel">Battery Pack</text></g>
+          <g id="devUsb" class="devgroup" data-device="usb"><rect x="900" y="350" width="130" height="100" rx="10" fill="url(#gradBox)" stroke="#22d3ee" stroke-width="2"></rect>
+            <rect x="918" y="372" width="30" height="16" rx="3" fill="#0d1526" stroke="#22d3ee"></rect>
+            <rect x="918" y="398" width="30" height="16" rx="3" fill="#0d1526" stroke="#22d3ee"></rect>
+            <rect x="960" y="385" width="30" height="16" rx="3" fill="#0d1526" stroke="#22d3ee"></rect>
+            <text x="900" y="338" class="devlabel">USB Charging</text></g>
+          <circle id="dotSolar" class="glow-node" cx="770" cy="155" r="7" fill="#6b7688"></circle>
+          <circle id="dotWind" class="glow-node" cx="900" cy="222" r="7" fill="#a78bfa"></circle>
+          <circle id="dotController" class="glow-node" cx="750" cy="325" r="7" fill="#22c55e"></circle>
+          <circle id="dotBattery" class="glow-node" cx="742" cy="465" r="7" fill="#22c55e"></circle>
+          <circle id="dotUsb" class="glow-node" cx="1024" cy="355" r="7" fill="#6b7688"></circle>
+        </svg>
+
+        <div class="device-card na" data-device="solar" style="--x:1.3;--y:8">
+          <div class="dc-title">Solar Panel <span class="status-chip na">N/A</span></div>
+          <div class="dc-note">ยังไม่มีเซนเซอร์วัดแยกสำหรับแผงโซลาร์ — บอร์ดวัดรวมที่ขา Generator (Pin 34) เท่านั้น</div>
+          <div class="dc-hint">คลิกเพื่อดูรายละเอียด →</div>
+        </div>
+        <div class="device-card" data-device="wind" style="--x:1.3;--y:40">
+          <div class="dc-title">Generator <span class="status-chip healthy" id="chip-wind">Healthy</span></div>
+          <div class="dc-row">Voltage <b id="v-windV">-- V</b></div>
+          <div class="dc-note" id="n-wind">อ่านจาก GPIO34 (Motor Generator)</div>
+          <div class="dc-hint">คลิกเพื่อดูรายละเอียด →</div>
+        </div>
+        <div class="device-card" data-device="battery" style="--x:1.3;--y:65">
+          <div class="dc-title">Battery Pack <span class="status-chip healthy" id="chip-battery">Healthy</span></div>
+          <div class="dc-row">Charge <b id="v-battPct">-- %</b></div>
+          <div class="dc-row">Voltage <b id="v-battV">-- V</b></div>
+          <div class="dc-note" id="n-battery">อ่านจาก GPIO35 (Battery)</div>
+          <div class="dc-hint">คลิกเพื่อดูรายละเอียด →</div>
+        </div>
+        <div class="device-card" data-device="controller" style="--x:78.5;--y:31">
+          <div class="dc-title">CYD Board <span class="status-chip healthy" id="chip-controller">Healthy</span></div>
+          <div class="dc-row">Free Heap <b id="v-ctrlHeap">-- KB</b></div>
+          <div class="dc-row">Uptime <b id="v-ctrlUptime">--</b></div>
+          <div class="dc-note" id="n-controller">สถานะฮาร์ดแวร์บอร์ดหลัก (ESP32-2432S028)</div>
+          <div class="dc-hint">คลิกเพื่อดูรายละเอียด →</div>
+        </div>
+        <div class="device-card na" data-device="usb" style="--x:78.5;--y:51">
+          <div class="dc-title">USB Charging <span class="status-chip na">N/A</span></div>
+          <div class="dc-note">ยังไม่มีเซนเซอร์ตรวจสอบพอร์ต USB ในเฟิร์มแวร์ปัจจุบัน</div>
+          <div class="dc-hint">คลิกเพื่อดูรายละเอียด →</div>
+        </div>
+      </div>
+
+      <aside class="health-panel">
+        <h3>Health Monitoring Panel</h3>
+        <div class="sub">อิงข้อมูลจริงจาก Firebase RTDB · /live</div>
+        <div class="score-ring">
+          <div class="score-num" id="healthScore" style="color:var(--green);">--</div>
+          <div class="score-label">System Health<br>Score · out of 100</div>
+        </div>
+        <ul id="alertList"></ul>
+        <div class="legend">
+          <div class="row"><span class="sw" style="background:var(--green);"></span> Normal — ปกติ</div>
+          <div class="row"><span class="sw" style="background:var(--amber);"></span> Warning — ประสิทธิภาพลดลง</div>
+          <div class="row"><span class="sw" style="background:var(--red);"></span> Critical — ผิดปกติ/ออฟไลน์</div>
+          <div class="row"><span class="sw" style="background:var(--gray);"></span> N/A — ยังไม่มีเซนเซอร์</div>
+        </div>
+        <div class="demo-controls">
+          <h4>โหมดทดสอบ (ไม่กระทบข้อมูลจริง)</h4>
+          <div class="btnrow">
+            <button data-fault="offline">จำลอง: อุปกรณ์ออฟไลน์</button>
+            <button data-fault="lowbatt">จำลอง: แบตต่ำ</button>
+            <button data-fault="heap">จำลอง: หน่วยความจำต่ำ</button>
+            <button class="reset" data-fault="reset">กลับข้อมูลจริง</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="statusbar">
+    <span>Firebase RTDB: /live, /history</span>
+    <span id="lastUpdated">Last updated —</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  // ============================================================
+  // ⚠️ แก้ตรงนี้ให้เป็นของโปรเจกต์คุณ
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyBuIxVkuSJfgF7f5ApgK2B67a-QBEZzf3s",
+    databaseURL: "https://solar-station-5b0a8-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // ===== Tab switching + sliding indicator =====
+  const nav = document.getElementById('tabsNav');
+  const indicator = document.getElementById('tabIndicator');
+  function moveIndicator(btn){
+    const navRect = nav.getBoundingClientRect();
+    const r = btn.getBoundingClientRect();
+    indicator.style.left = (r.left - navRect.left) + 'px';
+    indicator.style.width = r.width + 'px';
+  }
+  function playEntrance(panel){
+    const els = panel.querySelectorAll('.card, .chart-card');
+    els.forEach((el,i)=>{
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = 'cardIn .45s ease both';
+      el.style.animationDelay = (i*0.06)+'s';
+    });
+  }
+  document.querySelectorAll('nav.tabs button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tabpanel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = document.getElementById('tab-'+btn.dataset.tab);
+      panel.classList.add('active');
+      moveIndicator(btn);
+      playEntrance(panel);
+    });
+  });
+  window.addEventListener('resize', ()=>{
+    const active = document.querySelector('nav.tabs button.active');
+    if(active) moveIndicator(active);
+  });
+
+  // ===== Clock =====
+  function tickClock(){
+    const now = new Date();
+    document.getElementById('clockTime').textContent = now.toLocaleTimeString('th-TH');
+    document.getElementById('clockDate').textContent = now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});
+  }
+  tickClock(); setInterval(tickClock,1000);
+
+  function fmt(n,d){ return (n===null||n===undefined||isNaN(n)) ? '--' : Number(n).toFixed(d); }
+  function formatUptime(sec){
+    sec = Math.max(0, Math.floor(sec||0));
+    const h = String(Math.floor(sec/3600)).padStart(2,'0');
+    const m = String(Math.floor((sec%3600)/60)).padStart(2,'0');
+    const s = String(sec%60).padStart(2,'0');
+    return h+':'+m+':'+s;
+  }
+
+  // ===== Count-up number animation =====
+  const prevVals = {};
+  function animateValue(el, key, newVal, decimals){
+    if(el===null || newVal===null || newVal===undefined || isNaN(newVal)){ if(el) el.textContent='--'; return; }
+    const from = prevVals[key]!==undefined ? prevVals[key] : newVal;
+    prevVals[key] = newVal;
+    const start = performance.now(); const duration = 450;
+    function step(now){
+      const p = Math.min(1, (now-start)/duration);
+      const eased = 1-Math.pow(1-p,3);
+      const val = from + (newVal-from)*eased;
+      el.textContent = val.toFixed(decimals);
+      if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ===== Toasts =====
+  const TOAST_COLOR = {healthy:'var(--green)', warning:'var(--amber)', critical:'var(--red)'};
+  const TOAST_ICON = {healthy:'✅', warning:'⚠️', critical:'❌'};
+  function showToast(status, title, msg){
+    const c = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.style.setProperty('--c', TOAST_COLOR[status]||'var(--cyan)');
+    el.innerHTML = '<span class="t-icon">'+(TOAST_ICON[status]||'ℹ️')+'</span><span><b>'+title+'</b><span>'+msg+'</span></span>';
+    c.appendChild(el);
+    setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 300); }, 5000);
+  }
+
+  // ===== Modal popup =====
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalBox = document.getElementById('modalBox');
+  function closeModal(){ modalOverlay.classList.remove('show'); }
+  modalOverlay.addEventListener('click', e=>{ if(e.target===modalOverlay) closeModal(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+  const DEVICE_INFO = {
+    solar:{title:'☀️ Solar Panel', na:true, note:'ยังไม่มีเซนเซอร์วัดแยกสำหรับแผงโซลาร์ในเฟิร์มแวร์ปัจจุบัน — ตอนนี้บอร์ดวัดรวมผ่านขา Generator (Pin 34) เพียงจุดเดียว ถ้าต่อเซนเซอร์วัดแผงโซลาร์แยกเพิ่ม จะขึ้นข้อมูลจริงตรงนี้ได้ทันที'},
+    wind:{title:'💨 Generator', na:false},
+    battery:{title:'🔋 Battery Pack', na:false},
+    controller:{title:'🧠 CYD Board (ESP32)', na:false},
+    usb:{title:'🔌 USB Charging', na:true, note:'ยังไม่มีเซนเซอร์ตรวจสอบสถานะพอร์ต USB ในเฟิร์มแวร์ปัจจุบัน — เพิ่มโมดูลวัดกระแสที่พอร์ตแล้วต่อยอดโค้ดส่วนนี้ได้ในอนาคต'}
+  };
+
+  function openModal(key){
+    const info = DEVICE_INFO[key];
+    if(!info) return;
+    let rows = '';
+    if(info.na){
+      rows = '<div class="modal-note">'+info.note+'</div>';
+    } else {
+      const d = lastData || {};
+      if(key==='wind'){
+        rows = '<div class="modal-row"><span>Voltage</span><b>'+fmt(d.generator,2)+' V</b></div>'+
+               '<div class="modal-row"><span>Pin</span><b>GPIO34</b></div>'+
+               '<div class="modal-note">ค่าที่ผลิตได้ขึ้นกับสภาพลม/แดดขณะนั้น 0V ไม่ได้แปลว่าเสีย อาจแปลว่ายังไม่มีลม/แดดเพียงพอ</div>';
+      } else if(key==='battery'){
+        rows = '<div class="modal-row"><span>Charge Level</span><b>'+fmt(d.battery,0)+' %</b></div>'+
+               '<div class="modal-row"><span>Voltage</span><b>'+fmt(d.voltage,2)+' V</b></div>'+
+               '<div class="modal-row"><span>Pin</span><b>GPIO35</b></div>'+
+               '<div class="modal-note">คำนวณ % จากช่วงแรงดัน 11.5V–14.4V ตามสูตรในเฟิร์มแวร์ (ระบบแบต 12V)</div>';
+      } else if(key==='controller'){
+        rows = '<div class="modal-row"><span>Free Heap</span><b>'+fmt((d.heap||0)/1024,0)+' KB</b></div>'+
+               '<div class="modal-row"><span>Uptime</span><b>'+formatUptime(d.uptime)+'</b></div>'+
+               '<div class="modal-row"><span>IP Address</span><b>'+(d.ip||'--')+'</b></div>'+
+               '<div class="modal-note">บอร์ด CYD (ESP32-2432S028) อ่านค่าเซนเซอร์แล้ว push ขึ้น Firebase ทุก 5 วินาที</div>';
+      }
+    }
+    modalBox.innerHTML = '<div class="modal-head"><h2>'+info.title+'</h2><button class="modal-close" id="modalCloseBtn">✕</button></div>' + rows;
+    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+    modalOverlay.classList.add('show');
+  }
+  document.querySelectorAll('.device-card, .devgroup').forEach(el=>{
+    el.addEventListener('click', ()=> openModal(el.dataset.device));
+  });
+
+  // ===== Trend buffers for sparklines =====
+  const MAXPTS = 90;
+  const battBuf = [], genBuf = [];
+  function pushBuf(buf, v){ buf.push(v); if(buf.length>MAXPTS) buf.shift(); }
+  function renderSpark(polyId, buf, minV, maxV){
+    const w=600, h=100;
+    if(buf.length<2){ document.getElementById(polyId).setAttribute('points',''); return; }
+    const pts = buf.map((v,i)=>{
+      const x = (i/(MAXPTS-1))*w;
+      const cl = Math.max(minV, Math.min(maxV, v));
+      const y = h - ((cl-minV)/(maxV-minV))*h;
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    document.getElementById(polyId).setAttribute('points', pts);
+  }
+
+  // ===== Live state =====
+  let lastData = null;
+  let lastUpdateAt = 0;
+  let testMode = null;
+  const STALE_MS = 15000;   // บอร์ด push ทุก 5 วิ เผื่อไว้ 15 วิ
+  const prevStatus = {};
+
+  function applyLive(d){
+    lastData = d;
+    lastUpdateAt = Date.now();
+
+    animateValue(document.getElementById('ov-battPct'), 'battPct', d.battery, 0);
+    animateValue(document.getElementById('ov-genV'), 'genV', d.generator, 2);
+    animateValue(document.getElementById('ov-battV'), 'battV', d.voltage, 2);
+    document.getElementById('ov-uptime').textContent = formatUptime(d.uptime);
+    pushBuf(battBuf, d.battery); pushBuf(genBuf, d.generator);
+    renderSpark('sparkBatt', battBuf, 0, 100);
+    renderSpark('sparkGen', genBuf, 0, 17);
+
+    animateValue(document.getElementById('hw-heap'), 'heap', (d.heap||0)/1024, 1);
+    document.getElementById('hw-uptime').textContent = formatUptime(d.uptime);
+    document.getElementById('hw-ip').textContent = d.ip || '--';
+
+    document.getElementById('lastUpdated').textContent = 'Last updated ' + new Date().toLocaleTimeString('th-TH');
+    renderHealth();
+  }
+
+  function setConnUI(isOnline){
+    const dot = document.getElementById('connDot');
+    const label = document.getElementById('connLabel');
+    dot.className = 'dot ' + (isOnline?'live':'offline');
+    label.textContent = isOnline ? 'เชื่อมต่อสด' : 'ขาดการเชื่อมต่อ / ไม่มีข้อมูลใหม่';
+    document.getElementById('hw-conn').textContent = isOnline ? 'Connected' : 'Disconnected';
+    document.getElementById('hw-conn').style.color = isOnline ? 'var(--green)' : 'var(--red)';
+    document.getElementById('hw-connSub').textContent = isOnline ? 'ได้รับข้อมูลต่อเนื่อง' : 'ไม่มีข้อมูลใหม่เกิน ' + (STALE_MS/1000) + ' วินาที';
+    const connCard = document.getElementById('hw-connCard');
+    connCard.classList.remove('acc-green','acc-red');
+    connCard.classList.add(isOnline?'acc-green':'acc-red');
+  }
+
+  setInterval(()=>{
+    if(testMode) return;
+    const online = lastData!==null && (Date.now()-lastUpdateAt) < STALE_MS;
+    setConnUI(online);
+    if(!online) renderHealth();
+  }, 1500);
+
+  function startListening(){
+    db.ref('/live').on('value', snap=>{
+      const d = snap.val();
+      if(d) applyLive(d);
+    }, err=>{
+      console.error(err);
+      document.getElementById('permWarning').style.display='block';
+    });
+  }
+  startListening();
+
+  // ===== AI Forecast =====
+  db.ref('/history').limitToLast(3).once('value').then(snap=>{
+    const obj = snap.val();
+    const tbody = document.getElementById('forecastBody');
+    if(!obj){ tbody.innerHTML = '<tr><td colspan="4" class="empty-note">ยังไม่มีข้อมูลย้อนหลัง (จะเริ่มบันทึกทุกชั่วโมงโดยอัตโนมัติ)</td></tr>'; return; }
+    const hourly = {};
+    Object.keys(obj).forEach(date=>{
+      const day = obj[date];
+      Object.keys(day).forEach(hour=>{
+        const rec = day[hour];
+        const h = parseInt(hour,10);
+        if(!hourly[h]) hourly[h] = {battSum:0, genSum:0, count:0};
+        hourly[h].battSum += (rec.batt||0);
+        hourly[h].genSum += (rec.gen||0);
+        hourly[h].count++;
+      });
+    });
+    const hours = Object.keys(hourly).map(Number).sort((a,b)=>a-b);
+    if(hours.length===0){ tbody.innerHTML = '<tr><td colspan="4" class="empty-note">ยังไม่มีข้อมูลย้อนหลังเพียงพอ</td></tr>'; return; }
+    const rows = hours.map(h=>{
+      const rec = hourly[h];
+      return { h, battAvg: rec.battSum/rec.count, genAvg: rec.genSum/rec.count };
+    });
+    const genVals = rows.map(r=>r.genAvg).sort((a,b)=>a-b);
+    const t1 = genVals[Math.floor(genVals.length/3)] ?? 0;
+    const t2 = genVals[Math.floor(genVals.length*2/3)] ?? 0;
+    tbody.innerHTML = rows.map(r=>{
+      let pillClass='low', pillText='ต่ำ';
+      if(r.genAvg>=t2){ pillClass='good'; pillText='ดี'; }
+      else if(r.genAvg>=t1){ pillClass='mid'; pillText='ปานกลาง'; }
+      const label = String(r.h).padStart(2,'0')+':00 - '+String((r.h+1)%24).padStart(2,'0')+':00';
+      return '<tr><td>'+label+'</td><td><b>'+r.battAvg.toFixed(2)+'</b></td><td><b>'+r.genAvg.toFixed(2)+'</b></td>'+
+             '<td><span class="pill '+pillClass+'">'+pillText+'</span></td></tr>';
+    }).join('');
+  }).catch(err=>{
+    console.error(err);
+    document.getElementById('forecastBody').innerHTML = '<tr><td colspan="4" class="empty-note">โหลดข้อมูลย้อนหลังไม่สำเร็จ — ตรวจสอบ Firebase Rules</td></tr>';
+  });
+
+  // ===== Health check logic =====
+  const ICONS = {healthy:'✅', warning:'⚠️', critical:'❌', na:'▫️'};
+  function setChip(id, status){
+    const el = document.getElementById('chip-'+id);
+    el.textContent = status.charAt(0).toUpperCase()+status.slice(1);
+    el.className = 'status-chip '+status;
+  }
+  function checkTransition(label, status, note){
+    const prev = prevStatus[label];
+    if(prev !== undefined && prev !== status){
+      if(status==='warning' || status==='critical'){
+        showToast(status, label+' — '+ (status==='critical'?'วิกฤต':'เตือน'), note);
+      } else if(status==='healthy' && (prev==='warning'||prev==='critical')){
+        showToast('healthy', label+' — กลับมาปกติแล้ว', note);
+      }
+    }
+    prevStatus[label] = status;
+  }
+
+  function renderHealth(){
+    const online = testMode==='offline' ? false : (lastData!==null && (Date.now()-lastUpdateAt) < STALE_MS);
+    const d = lastData || {};
+    const heapKB = testMode==='heap' ? 15 : (d.heap||0)/1024;
+    const battPct = testMode==='lowbatt' ? 6 : (d.battery ?? null);
+    const battV = d.voltage ?? null;
+    const genV = d.generator ?? null;
+
+    let items = [];
+    let score = 100;
+
+    let windStatus='healthy', windNote='กำลังผลิตไฟจากเครื่องกำเนิด';
+    if(!online){ windStatus='critical'; windNote='ไม่มีข้อมูลใหม่จากบอร์ด — ตรวจการเชื่อมต่อ WiFi/บอร์ด'; score-=30; }
+    else if(genV!==null && genV < 0.5){ windStatus='healthy'; windNote='ไม่มีการผลิตไฟขณะนี้ (ปกติถ้าลม/แดดน้อย)'; }
+    setChip('wind', windStatus);
+    document.getElementById('v-windV').textContent = fmt(genV,2)+' V';
+    document.getElementById('n-wind').textContent = windNote;
+    items.push({status:windStatus, label:'Generator', note:windNote});
+    checkTransition('Generator', windStatus, windNote);
+
+    let battStatus='healthy', battNote='ระดับและแรงดันแบตเตอรี่ปกติ';
+    if(!online){ battStatus='critical'; battNote='ไม่มีข้อมูลใหม่จากบอร์ด'; }
+    else if(battPct!==null && battPct < 10){ battStatus='critical'; battNote='แบตเตอรี่เหลือน้อยมาก ('+fmt(battPct,0)+'%) ควรชาร์จด่วน'; score-=30; }
+    else if(battPct!==null && battPct < 25){ battStatus='warning'; battNote='แบตเตอรี่เหลือน้อย ('+fmt(battPct,0)+'%)'; score-=12; }
+    else if(battV!==null && (battV < 9 || battV > 16)){ battStatus='warning'; battNote='ค่าแรงดันแบตเตอรี่ผิดช่วงปกติ ตรวจสอบเซนเซอร์/สายวัด'; score-=12; }
+    setChip('battery', battStatus);
+    document.getElementById('v-battPct').textContent = fmt(battPct,0)+' %';
+    document.getElementById('v-battV').textContent = fmt(battV,2)+' V';
+    document.getElementById('n-battery').textContent = battNote;
+    items.push({status:battStatus, label:'Battery Pack', note:battNote});
+    checkTransition('Battery Pack', battStatus, battNote);
+
+    let ctrlStatus='healthy', ctrlNote='ฮาร์ดแวร์บอร์ดหลักทำงานปกติ';
+    if(!online){ ctrlStatus='critical'; ctrlNote='บอร์ดขาดการเชื่อมต่อ ไม่ส่งข้อมูลใหม่'; }
+    else if(heapKB < 20){ ctrlStatus='critical'; ctrlNote='หน่วยความจำเหลือน้อยมาก ('+fmt(heapKB,0)+' KB) เสี่ยงแฮงค์/รีสตาร์ท'; score-=30; }
+    else if(heapKB < 50){ ctrlStatus='warning'; ctrlNote='หน่วยความจำเหลือน้อย ('+fmt(heapKB,0)+' KB)'; score-=12; }
+    setChip('controller', ctrlStatus);
+    document.getElementById('v-ctrlHeap').textContent = fmt(heapKB,0)+' KB';
+    document.getElementById('v-ctrlUptime').textContent = formatUptime(d.uptime);
+    document.getElementById('n-controller').textContent = ctrlNote;
+    items.push({status:ctrlStatus, label:'CYD Board (ESP32)', note:ctrlNote});
+    checkTransition('CYD Board (ESP32)', ctrlStatus, ctrlNote);
+
+    items.push({status:'na', label:'Solar Panel', note:'ยังไม่มีเซนเซอร์แยกสำหรับแผงโซลาร์'});
+    items.push({status:'na', label:'USB Charging', note:'ยังไม่มีเซนเซอร์ตรวจสอบพอร์ต USB'});
+
+    const COLOR = {healthy:'#22c55e', warning:'#f59e0b', critical:'#ef4444', na:'#6b7688'};
+    document.getElementById('dotWind').setAttribute('fill', COLOR[windStatus]);
+    document.getElementById('flowWind').setAttribute('stroke', COLOR[windStatus]);
+    document.getElementById('dotBattery').setAttribute('fill', COLOR[battStatus]);
+    document.getElementById('flowBatt').setAttribute('stroke', COLOR[battStatus]);
+    document.getElementById('dotController').setAttribute('fill', COLOR[ctrlStatus]);
+
+    const list = document.getElementById('alertList');
+    list.innerHTML = items.map(it=>{
+      return '<li class="'+it.status+'"><span>'+ICONS[it.status]+'</span><span class="txt"><b>'+it.label+'</b><span>'+it.note+'</span></span></li>';
+    }).join('');
+
+    score = Math.max(0, Math.min(100, score));
+    const scoreEl = document.getElementById('healthScore');
+    scoreEl.textContent = online ? Math.round(score) : '--';
+    scoreEl.style.color = score>=85?'var(--green)':score>=60?'var(--amber)':'var(--red)';
+  }
+
+  document.querySelectorAll('.demo-controls button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const f = btn.dataset.fault;
+      testMode = (f==='reset') ? null : f;
+      renderHealth();
+    });
+  });
+
+  // init
+  const initBtn = document.querySelector('nav.tabs button.active');
+  moveIndicator(initBtn);
+  playEntrance(document.getElementById('tab-overview'));
+  renderHealth();
+})();
+</script>
+</body>
+</html>
