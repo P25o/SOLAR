@@ -69,7 +69,13 @@ const int PIN_RX2 = 22;
 const int PIN_TX2 = 27;
 
 // แสงพื้นหลังจอ
-constexpr int TFT_BL = 21;
+/* ⚠️ ห้ามตั้งชื่อตัวแปรว่า TFT_BL เพราะ User_Setup.h ของ TFT_eSPI
+      ประกาศไว้เป็นมาโครแล้ว จะชนกันจนคอมไพล์ไม่ผ่าน */
+#ifdef TFT_BL
+  constexpr int BACKLIGHT_PIN = TFT_BL;
+#else
+  constexpr int BACKLIGHT_PIN = 21;
+#endif
 
 // ============================================================
 // ส่วนที่ 3 : ค่าคงที่สำหรับคำนวณ
@@ -383,11 +389,11 @@ void setup() {
   // แสงหน้าจอ — คำสั่ง ledc เปลี่ยนหน้าตาระหว่าง ESP32 core 2.x กับ 3.x
   // เขียนแบบนี้เพื่อให้คอมไพล์ผ่านทั้งสองเวอร์ชัน (กันพลาดวันแข่ง)
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(TFT_BL, 5000, 8);
-  ledcWrite(TFT_BL, 255);
+  ledcAttach(BACKLIGHT_PIN, 5000, 8);
+  ledcWrite(BACKLIGHT_PIN, 255);
 #else
   ledcSetup(0, 5000, 8);
-  ledcAttachPin(TFT_BL, 0);
+  ledcAttachPin(BACKLIGHT_PIN, 0);
   ledcWrite(0, 255);
 #endif
 

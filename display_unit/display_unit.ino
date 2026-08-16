@@ -52,7 +52,16 @@ const unsigned long STALE_MS = 20000;
 // ส่วนที่ 3 : จอ
 // ============================================================
 
-constexpr int TFT_BL = 21;    // ขาแสงหน้าจอของ CYD
+/* ขาแสงหน้าจอของ CYD
+   ⚠️ ห้ามตั้งชื่อตัวแปรว่า TFT_BL เด็ดขาด
+      เพราะไฟล์ User_Setup.h ของ TFT_eSPI ประกาศ TFT_BL ไว้เป็นมาโครแล้ว
+      ตัวแปลภาษาจะแทนชื่อด้วยเลข 21 ก่อน กลายเป็น "constexpr int 21 = 21;"
+      ซึ่งคอมไพล์ไม่ผ่าน                                                   */
+#ifdef TFT_BL
+  constexpr int BACKLIGHT_PIN = TFT_BL;   // ใช้ค่าที่ User_Setup.h ตั้งไว้
+#else
+  constexpr int BACKLIGHT_PIN = 21;       // เผื่อกรณีไม่ได้ประกาศไว้
+#endif
 
 constexpr uint16_t COLOR_BG     = TFT_BLACK;
 constexpr uint16_t COLOR_PANEL  = 0x10A2;
@@ -339,11 +348,11 @@ void setup() {
 
   // แสงหน้าจอ — คำสั่ง ledc ต่างกันระหว่าง ESP32 core 2.x กับ 3.x
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(TFT_BL, 5000, 8);
-  ledcWrite(TFT_BL, 255);
+  ledcAttach(BACKLIGHT_PIN, 5000, 8);
+  ledcWrite(BACKLIGHT_PIN, 255);
 #else
   ledcSetup(0, 5000, 8);
-  ledcAttachPin(TFT_BL, 0);
+  ledcAttachPin(BACKLIGHT_PIN, 0);
   ledcWrite(0, 255);
 #endif
 
