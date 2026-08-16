@@ -6,6 +6,15 @@
 
 ---
 
+## ✅ สถานะปัจจุบัน: ทำไปแล้ว
+
+ตรวจสอบเมื่อวันที่จัดทำเอกสารนี้ พบว่าเครื่องได้ติดตั้ง TFT_eSPI และตั้งค่า `User_Setup.h`
+ให้ตรงกับบอร์ด ESP32-2432S028 เรียบร้อยแล้ว **ไม่ต้องทำขั้นที่ 1-3 ซ้ำ**
+
+ขั้นตอนด้านล่างเก็บไว้เผื่อต้องติดตั้งใหม่ หรือย้ายไปทำบนเครื่องอื่น
+
+---
+
 ## ขั้นที่ 1 — ติดตั้งไลบรารี
 
 Arduino IDE → **Sketch → Include Library → Manage Libraries** → ค้นหา **`TFT_eSPI`** (ของ Bodmer) → **Install**
@@ -17,8 +26,11 @@ Arduino IDE → **Sketch → Include Library → Manage Libraries** → ค้�
 เปิดโฟลเดอร์นี้ใน File Explorer
 
 ```
-C:\Users\Acer\Documents\Arduino\libraries\TFT_eSPI
+C:\Users\Acer\OneDrive\เอกสาร\Arduino\libraries\TFT_eSPI
 ```
+
+> โฟลเดอร์ Arduino ของเครื่องนี้ถูกย้ายไปอยู่ใน OneDrive ไม่ได้อยู่ใน `Documents` ตามค่าปกติ
+> ถ้าหาไม่เจอ ให้ดูที่ Arduino IDE → **File → Preferences → Sketchbook location** ว่าชี้ไปที่ไหน
 
 หาไฟล์ชื่อ **`User_Setup.h`** → เปิดด้วย Notepad
 
