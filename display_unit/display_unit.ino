@@ -14,12 +14,10 @@
    ตัวที่วัดไฟและคุม Relay คือบอร์ดที่ 1 (station_controller.ino)
 
    ------------------------------------------------------------
-   ⚠️ ต้องติดตั้งไลบรารีก่อน 2 ตัว
-      1. TFT_eSPI          (ตั้งค่า User_Setup.h ด้วย — ดู README_display.md)
-      2. QRCode ของ Richard Moore   <-- ตัวใหม่ที่เพิ่งเพิ่ม
+   ⚠️ ต้องติดตั้งไลบรารีเดียว: TFT_eSPI
+      (และตั้งค่าไฟล์ User_Setup.h ด้วย — ดู README_display.md)
 
-      วิธีลง: Arduino IDE > Sketch > Include Library > Manage Libraries
-              ค้นหา "QRCode" เลือกอันที่ผู้พัฒนาชื่อ Richard Moore
+   QR ไม่ต้องใช้ไลบรารีเพิ่ม เพราะคำนวณไว้ล่วงหน้าแล้วฝังเป็นข้อมูลในโค้ด
    ------------------------------------------------------------
 
    *** ต้องแก้ 2 บรรทัดก่อนอัปโหลด: WIFI_SSID, WIFI_PASS ***
@@ -33,7 +31,7 @@
 #include <HTTPClient.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
-#include "qrcode.h"
+#include <pgmspace.h>
 
 // ============================================================
 // ส่วนที่ 1 : ตั้งค่าที่ต้องแก้
@@ -44,8 +42,9 @@ const char* WIFI_PASS = "ใส่รหัส WiFi ของคุณ";
 
 const char* FB_HOST = "https://solar-station-5b0a8-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-// ที่อยู่เว็บที่ QR จะพาลูกค้าไป
-// ⚠️ ยิ่งสั้นยิ่งดี เพราะ QR จะมีจุดน้อยลง สแกนติดง่ายขึ้น
+/* ที่อยู่เว็บที่ QR จะพาลูกค้าไป — บันทึกไว้เป็นเอกสารเท่านั้น
+   ตัว QR ถูกคำนวณไว้ล่วงหน้าแล้วเก็บเป็นข้อมูลใน QR_DATA ด้านล่าง
+   ⚠️ ถ้าแก้บรรทัดนี้ QR จะยังชี้ที่อยู่เดิม ต้องสร้าง QR_DATA ใหม่ด้วย */
 const char* PAY_URL = "https://p25o.github.io/SOLAR/pay.html";
 
 // ============================================================
@@ -102,47 +101,53 @@ const int QR_X   = 8;     // ตำแหน่งมุมซ้ายบนข
 const int QR_Y   = 40;
 const int QR_PAD = 10;    // ขอบขาวรอบนอก ห้ามน้อยกว่านี้ ไม่งั้นสแกนยาก
 
-#define QR_MAX_VERSION 5  // เผื่อไว้กรณี URL ยาวขึ้นในอนาคต
+/* ---------- ข้อมูล QR ที่คำนวณไว้ล่วงหน้า ----------
+   เนื้อหา : https://p25o.github.io/SOLAR/pay.html
+   ขนาด    : 29 x 29 โมดูล (เวอร์ชัน 3) ระดับแก้ไขข้อผิดพลาด M
+   เก็บแบบ : อัดบิตเรียงทีละแถว 8 โมดูลต่อ 1 ไบต์ รวม 106 ไบต์
 
-QRCode  qrcode;
-uint8_t qrcodeData[qrcode_getBufferSize(QR_MAX_VERSION)];
-bool    qrReady = false;
+   ทำไมถึงฝังไว้แทนที่จะคำนวณตอนรัน:
+     1. ไม่ต้องลงไลบรารีเพิ่ม และไม่ชนกับ qrcode.h ที่มากับ ESP32 core
+     2. ไม่กินแรมและไม่เสียเวลาคำนวณตอนบูต
+     3. URL ของเราคงที่อยู่แล้ว ไม่มีเหตุต้องสร้างใหม่ทุกครั้ง
 
-void buildQR() {
-  // ลองเวอร์ชันเล็กก่อน เพราะจุดจะใหญ่และสแกนง่ายกว่า
-  if (qrcode_initText(&qrcode, qrcodeData, 3, ECC_MEDIUM, PAY_URL) == 0) { qrReady = true; return; }
-  if (qrcode_initText(&qrcode, qrcodeData, 4, ECC_MEDIUM, PAY_URL) == 0) { qrReady = true; return; }
-  if (qrcode_initText(&qrcode, qrcodeData, 5, ECC_LOW,    PAY_URL) == 0) { qrReady = true; return; }
+   ⚠️ ถ้าเปลี่ยน URL ต้องสร้างข้อมูลชุดนี้ใหม่ (แก้เองด้วยมือไม่ได้)
+      ------------------------------------------------------ */
+const int QR_SIZE = 29;
+const uint8_t QR_DATA[] PROGMEM = {
+  0x7F, 0x31, 0xCF, 0x3F, 0xE8, 0xA1, 0x08, 0x76, 0xB9, 0x50, 0xDD, 0xAE,
+  0x09, 0xA4, 0xDB, 0x05, 0xFF, 0x74, 0x83, 0xAC, 0xB6, 0xE0, 0x5F, 0x55,
+  0xF5, 0x07, 0xA8, 0xBB, 0x00, 0xED, 0x6E, 0x44, 0xBA, 0x94, 0xE0, 0x2F,
+  0x76, 0x27, 0xD1, 0x35, 0xD8, 0xBB, 0xCA, 0x38, 0x25, 0x80, 0x60, 0x38,
+  0x54, 0xB3, 0xF8, 0x54, 0x52, 0x3B, 0xFF, 0x89, 0x69, 0x4E, 0x5E, 0x92,
+  0x36, 0x8B, 0xC2, 0x37, 0xC2, 0x05, 0x77, 0xD6, 0x11, 0xC2, 0x0D, 0x53,
+  0xA2, 0x4D, 0xCB, 0x7F, 0x00, 0xCA, 0x32, 0xFE, 0xDF, 0x48, 0xD6, 0x0A,
+  0x6A, 0x88, 0xD8, 0x5D, 0xCE, 0xF6, 0xA5, 0xEB, 0x3D, 0x66, 0x76, 0xAD,
+  0xFC, 0xD0, 0x20, 0x55, 0x88, 0xF5, 0xB7, 0xD1, 0xA9, 0x00,
+};
 
-  qrReady = false;   // URL ยาวเกินไป
-  Serial.println("สร้าง QR ไม่สำเร็จ — URL ยาวเกินไป ลองใช้ที่อยู่ที่สั้นลง");
+// จุดที่ตำแหน่ง (x, y) เป็นสีดำหรือไม่
+inline bool qrModule(int x, int y) {
+  int i = y * QR_SIZE + x;
+  return (pgm_read_byte(&QR_DATA[i >> 3]) >> (i & 7)) & 1;
 }
 
 void drawQR() {
   // พื้นขาวเต็มกล่อง (ทำหน้าที่เป็นขอบขาวรอบ QR ไปในตัว)
+  // QR ต้องเป็นจุดดำบนพื้นขาวเท่านั้น ถ้ากลับสีกล้องมือถือหลายรุ่นจะสแกนไม่ติด
   tft.fillRect(QR_X, QR_Y, QR_BOX, QR_BOX, TFT_WHITE);
 
-  if (!qrReady) {
-    tft.setTextColor(TFT_RED, TFT_WHITE);
-    tft.setTextSize(1);
-    tft.setCursor(QR_X + 12, QR_Y + QR_BOX / 2 - 8);
-    tft.print("QR ERROR");
-    tft.setCursor(QR_X + 12, QR_Y + QR_BOX / 2 + 4);
-    tft.print("URL too long");
-    return;
-  }
-
   int usable = QR_BOX - QR_PAD * 2;
-  int mod    = usable / qrcode.size;        // ขนาดจุดละกี่พิกเซล (ปัดลง)
+  int mod    = usable / QR_SIZE;            // ขนาดจุดละกี่พิกเซล (ปัดลง)
   if (mod < 1) mod = 1;
 
-  int drawn = mod * qrcode.size;
+  int drawn = mod * QR_SIZE;
   int ox    = QR_X + (QR_BOX - drawn) / 2;  // จัดกึ่งกลางกล่อง
   int oy    = QR_Y + (QR_BOX - drawn) / 2;
 
-  for (uint8_t y = 0; y < qrcode.size; y++) {
-    for (uint8_t x = 0; x < qrcode.size; x++) {
-      if (qrcode_getModule(&qrcode, x, y)) {
+  for (int y = 0; y < QR_SIZE; y++) {
+    for (int x = 0; x < QR_SIZE; x++) {
+      if (qrModule(x, y)) {
         tft.fillRect(ox + x * mod, oy + y * mod, mod, mod, TFT_BLACK);
       }
     }
@@ -507,7 +512,6 @@ void setup() {
   drawHeaderBar();
   printCentered("Connecting WiFi...", 110, 2, COLOR_TEXT, COLOR_BG);
 
-  buildQR();          // สร้าง QR เก็บไว้ในหน่วยความจำ ทำครั้งเดียวพอ
   wifiConnectAtBoot();
 
   pollFirebase();
