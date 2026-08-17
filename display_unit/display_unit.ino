@@ -2,17 +2,24 @@
    SOLAR CHARGING STATION — บอร์ดที่ 2 "จอแสดงผล"
    บอร์ด: CYD / ESP32-2432S028 (จอ 2.8" 320x240 ILI9341)
 
-   หน้าที่ของบอร์ดนี้: อ่านอย่างเดียว ไม่สั่งงานอะไรเลย
-   1. อ่าน /live จาก Firebase (ครั้งเดียวได้ครบทุกค่า)
-   2. แสดงแบตเตอรี่ / เจนเนอเรเตอร์ / สถานะการชาร์จ
-   3. นับถอยหลังบนจอให้ลื่นตา ระหว่างรอข้อมูลรอบถัดไป
+   หน้าจอมี 2 โหมด สลับกันเองอัตโนมัติ:
 
-   *** ไม่ต้องต่อสายอะไรเพิ่มเลย เสียบไฟอย่างเดียว ***
+   [ว่าง]     แสดง QR ให้ลูกค้าสแกนไปหน้าเลือกแพ็กเกจ
+              พร้อม % แบตเตอรี่ และแรงดันเจนเนอเรเตอร์
+
+   [ชาร์จอยู่] แสดงเลขนับถอยหลังตัวใหญ่
+              พอหมดเวลาจะกลับไปหน้า QR เองอัตโนมัติ
+
+   บอร์ดนี้อ่านอย่างเดียว ไม่สั่งงานอะไรเลย
    ตัวที่วัดไฟและคุม Relay คือบอร์ดที่ 1 (station_controller.ino)
 
    ------------------------------------------------------------
-   ⚠️ ก่อนอัปโหลด ต้องตั้งค่าไลบรารี TFT_eSPI ก่อน ไม่งั้นจอจะขาวโพลน
-      อ่านวิธีทำในไฟล์ README_display.md
+   ⚠️ ต้องติดตั้งไลบรารีก่อน 2 ตัว
+      1. TFT_eSPI          (ตั้งค่า User_Setup.h ด้วย — ดู README_display.md)
+      2. QRCode ของ Richard Moore   <-- ตัวใหม่ที่เพิ่งเพิ่ม
+
+      วิธีลง: Arduino IDE > Sketch > Include Library > Manage Libraries
+              ค้นหา "QRCode" เลือกอันที่ผู้พัฒนาชื่อ Richard Moore
    ------------------------------------------------------------
 
    *** ต้องแก้ 2 บรรทัดก่อนอัปโหลด: WIFI_SSID, WIFI_PASS ***
@@ -26,6 +33,7 @@
 #include <HTTPClient.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
+#include "qrcode.h"
 
 // ============================================================
 // ส่วนที่ 1 : ตั้งค่าที่ต้องแก้
@@ -36,12 +44,16 @@ const char* WIFI_PASS = "ใส่รหัส WiFi ของคุณ";
 
 const char* FB_HOST = "https://solar-station-5b0a8-default-rtdb.asia-southeast1.firebasedatabase.app";
 
+// ที่อยู่เว็บที่ QR จะพาลูกค้าไป
+// ⚠️ ยิ่งสั้นยิ่งดี เพราะ QR จะมีจุดน้อยลง สแกนติดง่ายขึ้น
+const char* PAY_URL = "https://p25o.github.io/SOLAR/pay.html";
+
 // ============================================================
 // ส่วนที่ 2 : จังหวะเวลา
 // ============================================================
 
 const unsigned long POLL_INTERVAL       = 3000;   // ดึงข้อมูลจาก Firebase
-const unsigned long SCREEN_INTERVAL     = 1000;   // วาดจอใหม่
+const unsigned long SCREEN_INTERVAL     = 1000;   // อัปเดตตัวเลขบนจอ
 const unsigned long WIFI_RETRY_INTERVAL = 10000;
 const unsigned long WIFI_BOOT_TIMEOUT   = 15000;
 
@@ -58,9 +70,9 @@ const unsigned long STALE_MS = 20000;
       ตัวแปลภาษาจะแทนชื่อด้วยเลข 21 ก่อน กลายเป็น "constexpr int 21 = 21;"
       ซึ่งคอมไพล์ไม่ผ่าน                                                   */
 #ifdef TFT_BL
-  constexpr int BACKLIGHT_PIN = TFT_BL;   // ใช้ค่าที่ User_Setup.h ตั้งไว้
+  constexpr int BACKLIGHT_PIN = TFT_BL;
 #else
-  constexpr int BACKLIGHT_PIN = 21;       // เผื่อกรณีไม่ได้ประกาศไว้
+  constexpr int BACKLIGHT_PIN = 21;
 #endif
 
 constexpr uint16_t COLOR_BG     = TFT_BLACK;
@@ -75,10 +87,70 @@ constexpr uint16_t COLOR_OK     = TFT_GREEN;
 TFT_eSPI tft = TFT_eSPI();
 
 /* หมายเหตุ: ฟอนต์ในตัวของ TFT_eSPI ไม่มีภาษาไทย
-   ข้อความบนจอจึงเป็นภาษาอังกฤษทั้งหมด (ถ้าใส่ไทยจะขึ้นเป็นสี่เหลี่ยม) */
+   ข้อความบนจอจึงเป็นภาษาอังกฤษทั้งหมด (ถ้าใส่ไทยจะขึ้นเป็นสี่เหลี่ยมเปล่า) */
 
 // ============================================================
-// ส่วนที่ 4 : ตัวแปรสถานะ
+// ส่วนที่ 4 : QR Code
+// ============================================================
+
+/* QR ต้องเป็น "จุดดำบนพื้นขาว" เท่านั้น
+   ถ้าวาดกลับสีเป็นจุดขาวบนพื้นดำ กล้องมือถือหลายรุ่นจะสแกนไม่ติด
+   จึงต้องถมพื้นขาวก่อน แล้วค่อยวาดจุดดำทับ                          */
+
+const int QR_BOX = 168;   // ขนาดกล่องสีขาวทั้งหมด (รวมขอบขาวรอบนอก)
+const int QR_X   = 8;     // ตำแหน่งมุมซ้ายบนของกล่อง
+const int QR_Y   = 40;
+const int QR_PAD = 10;    // ขอบขาวรอบนอก ห้ามน้อยกว่านี้ ไม่งั้นสแกนยาก
+
+#define QR_MAX_VERSION 5  // เผื่อไว้กรณี URL ยาวขึ้นในอนาคต
+
+QRCode  qrcode;
+uint8_t qrcodeData[qrcode_getBufferSize(QR_MAX_VERSION)];
+bool    qrReady = false;
+
+void buildQR() {
+  // ลองเวอร์ชันเล็กก่อน เพราะจุดจะใหญ่และสแกนง่ายกว่า
+  if (qrcode_initText(&qrcode, qrcodeData, 3, ECC_MEDIUM, PAY_URL) == 0) { qrReady = true; return; }
+  if (qrcode_initText(&qrcode, qrcodeData, 4, ECC_MEDIUM, PAY_URL) == 0) { qrReady = true; return; }
+  if (qrcode_initText(&qrcode, qrcodeData, 5, ECC_LOW,    PAY_URL) == 0) { qrReady = true; return; }
+
+  qrReady = false;   // URL ยาวเกินไป
+  Serial.println("สร้าง QR ไม่สำเร็จ — URL ยาวเกินไป ลองใช้ที่อยู่ที่สั้นลง");
+}
+
+void drawQR() {
+  // พื้นขาวเต็มกล่อง (ทำหน้าที่เป็นขอบขาวรอบ QR ไปในตัว)
+  tft.fillRect(QR_X, QR_Y, QR_BOX, QR_BOX, TFT_WHITE);
+
+  if (!qrReady) {
+    tft.setTextColor(TFT_RED, TFT_WHITE);
+    tft.setTextSize(1);
+    tft.setCursor(QR_X + 12, QR_Y + QR_BOX / 2 - 8);
+    tft.print("QR ERROR");
+    tft.setCursor(QR_X + 12, QR_Y + QR_BOX / 2 + 4);
+    tft.print("URL too long");
+    return;
+  }
+
+  int usable = QR_BOX - QR_PAD * 2;
+  int mod    = usable / qrcode.size;        // ขนาดจุดละกี่พิกเซล (ปัดลง)
+  if (mod < 1) mod = 1;
+
+  int drawn = mod * qrcode.size;
+  int ox    = QR_X + (QR_BOX - drawn) / 2;  // จัดกึ่งกลางกล่อง
+  int oy    = QR_Y + (QR_BOX - drawn) / 2;
+
+  for (uint8_t y = 0; y < qrcode.size; y++) {
+    for (uint8_t x = 0; x < qrcode.size; x++) {
+      if (qrcode_getModule(&qrcode, x, y)) {
+        tft.fillRect(ox + x * mod, oy + y * mod, mod, mod, TFT_BLACK);
+      }
+    }
+  }
+}
+
+// ============================================================
+// ส่วนที่ 5 : ตัวแปรสถานะ
 // ============================================================
 
 int   batteryPercent   = 0;
@@ -87,15 +159,37 @@ float generatorVoltage = 0.0f;
 bool  charging         = false;
 long  remainingSeconds = 0;
 
-bool  haveData      = false;
-unsigned long lastDataMs   = 0;   // ได้ข้อมูลจาก Firebase ล่าสุดเมื่อไหร่
-unsigned long lastPollMs   = 0;
-unsigned long lastScreenMs = 0;
-unsigned long lastTickMs   = 0;
+bool  haveData     = false;
+unsigned long lastDataMs    = 0;
+unsigned long lastPollMs    = 0;
+unsigned long lastScreenMs  = 0;
+unsigned long lastTickMs    = 0;
 unsigned long lastWifiTryMs = 0;
 
+// หน้าจอมีกี่แบบ
+enum ScreenMode { SCREEN_NONE, SCREEN_WAIT, SCREEN_IDLE, SCREEN_CHARGING, SCREEN_OFFLINE };
+ScreenMode currentScreen = SCREEN_NONE;
+
+// ค่าที่วาดไปแล้วรอบก่อน ใช้เช็กว่าต้องวาดใหม่ไหม (กันจอกะพริบ)
+int  lastDrawnBatt = -999;
+long lastDrawnSec  = -999;
+float lastDrawnGen = -999.0f;
+
 // ============================================================
-// ส่วนที่ 5 : อ่าน JSON แบบง่าย
+// ส่วนที่ 6 : ตัวช่วยวาดข้อความกึ่งกลาง
+// ============================================================
+
+// ฟอนต์พื้นฐานของ TFT_eSPI กว้าง 6 พิกเซล สูง 8 พิกเซล ต่อขนาด 1 เท่า
+void printCentered(const char* s, int y, uint8_t size, uint16_t fg, uint16_t bg, int centerX = 160) {
+  int w = (int)strlen(s) * 6 * size;
+  tft.setTextSize(size);
+  tft.setTextColor(fg, bg);
+  tft.setCursor(centerX - w / 2, y);
+  tft.print(s);
+}
+
+// ============================================================
+// ส่วนที่ 7 : อ่าน JSON แบบง่าย
 // ============================================================
 
 String extractValue(const String& json, const String& key) {
@@ -125,7 +219,7 @@ String extractValue(const String& json, const String& key) {
 }
 
 // ============================================================
-// ส่วนที่ 6 : ดึงข้อมูลจาก Firebase
+// ส่วนที่ 8 : ดึงข้อมูลจาก Firebase
 // ============================================================
 
 void pollFirebase() {
@@ -173,137 +267,191 @@ void pollFirebase() {
 }
 
 // ============================================================
-// ส่วนที่ 7 : วาดหน้าจอ
+// ส่วนที่ 9 : วาดหน้าจอ
 // ============================================================
 
-void drawStaticLayout() {
-  tft.fillScreen(COLOR_BG);
-
-  // แถบหัว
-  tft.fillRect(0, 0, 320, 34, COLOR_HEADER);
+void drawHeaderBar() {
+  tft.fillRect(0, 0, 320, 32, COLOR_HEADER);
   tft.setTextColor(COLOR_TEXT, COLOR_HEADER);
   tft.setTextSize(2);
-  tft.setCursor(10, 9);
-  tft.print("Solar Charging Station");
-
-  // กล่องซ้าย: แบตเตอรี่
-  tft.fillRoundRect(8, 42, 148, 62, 8, COLOR_PANEL);
-  tft.drawRoundRect(8, 42, 148, 62, 8, COLOR_BATT);
-  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-  tft.setTextSize(1);
-  tft.setCursor(18, 50);
-  tft.print("BATTERY");
-
-  // กล่องขวา: เจนเนอเรเตอร์
-  tft.fillRoundRect(164, 42, 148, 62, 8, COLOR_PANEL);
-  tft.drawRoundRect(164, 42, 148, 62, 8, COLOR_GEN);
-  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-  tft.setTextSize(1);
-  tft.setCursor(174, 50);
-  tft.print("GENERATOR");
-
-  // กล่องใหญ่: สถานะการชาร์จ
-  tft.fillRoundRect(8, 112, 304, 84, 10, COLOR_PANEL);
-  tft.drawRoundRect(8, 112, 304, 84, 10, COLOR_OK);
-  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-  tft.setTextSize(1);
-  tft.setCursor(18, 120);
-  tft.print("CHARGING STATUS");
+  tft.setCursor(10, 8);
+  tft.print("Solar Charging");
 }
 
-void drawValues() {
-  // --- แบตเตอรี่ ---
-  tft.fillRect(16, 62, 132, 36, COLOR_PANEL);
-  tft.setTextColor(COLOR_BATT, COLOR_PANEL);
-  tft.setTextSize(3);
-  tft.setCursor(18, 64);
-  tft.printf("%d%%", batteryPercent);
-
-  tft.setTextSize(1);
-  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-  tft.setCursor(18, 90);
-  tft.printf("%.2f V", batteryVoltage);
-
-  // --- เจนเนอเรเตอร์ ---
-  tft.fillRect(172, 62, 132, 36, COLOR_PANEL);
-  tft.setTextColor(COLOR_GEN, COLOR_PANEL);
-  tft.setTextSize(3);
-  tft.setCursor(174, 64);
-  tft.printf("%.1f", generatorVoltage);
-
-  tft.setTextSize(1);
-  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-  tft.setCursor(174, 90);
-  tft.print("VOLT");
-
-  // --- สถานะการชาร์จ ---
-  tft.fillRect(16, 132, 288, 58, COLOR_PANEL);
-
-  bool stale = haveData && (millis() - lastDataMs > STALE_MS);
-
-  if (!haveData) {
-    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-    tft.setTextSize(2);
-    tft.setCursor(18, 150);
-    tft.print("Waiting for data...");
-
-  } else if (stale) {
-    tft.setTextColor(TFT_RED, COLOR_PANEL);
-    tft.setTextSize(2);
-    tft.setCursor(18, 142);
-    tft.print("CONTROLLER OFFLINE");
-    tft.setTextSize(1);
-    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-    tft.setCursor(18, 168);
-    tft.print("No update from station board");
-
-  } else if (charging && remainingSeconds > 0) {
-    long m = remainingSeconds / 60;
-    long s = remainingSeconds % 60;
-
-    tft.setTextColor(COLOR_OK, COLOR_PANEL);
-    tft.setTextSize(2);
-    tft.setCursor(18, 136);
-    tft.print("CHARGING");
-
-    tft.setTextSize(4);
-    tft.setCursor(18, 158);
-    tft.printf("%02ld:%02ld", m, s);
-
-    tft.setTextSize(1);
-    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-    tft.setCursor(150, 176);
-    tft.print("time remaining");
-
-  } else {
-    tft.setTextColor(COLOR_TEXT, COLOR_PANEL);
-    tft.setTextSize(3);
-    tft.setCursor(18, 142);
-    tft.print("READY");
-
-    tft.setTextSize(1);
-    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
-    tft.setCursor(18, 174);
-    tft.print("Scan QR to start charging");
-  }
-
-  // --- แถบล่าง: สถานะเครือข่าย ---
-  tft.fillRect(0, 204, 320, 36, COLOR_BG);
+void drawWifiBar() {
+  tft.fillRect(0, 224, 320, 16, COLOR_BG);
   tft.setTextSize(1);
   if (WiFi.status() == WL_CONNECTED) {
-    tft.setTextColor(COLOR_OK, COLOR_BG);
-    tft.setCursor(10, 216);
+    tft.setTextColor(COLOR_MUTED, COLOR_BG);
+    tft.setCursor(8, 228);
     tft.print("WiFi OK  ");
     tft.print(WiFi.localIP());
   } else {
     tft.setTextColor(TFT_RED, COLOR_BG);
-    tft.setCursor(10, 216);
+    tft.setCursor(8, 228);
     tft.print("WiFi DISCONNECTED");
   }
 }
 
+// ---------- หน้า "ว่าง" : QR + แบตเตอรี่ ----------
+void drawIdleStatic() {
+  tft.fillRect(0, 32, 320, 192, COLOR_BG);
+  drawHeaderBar();
+
+  drawQR();
+
+  // คำเชิญใต้ QR
+  printCentered("SCAN TO CHARGE", 213, 1, COLOR_OK, COLOR_BG, QR_X + QR_BOX / 2);
+
+  // กล่องแบตเตอรี่ (ขวาบน)
+  tft.fillRoundRect(184, 40, 128, 84, 8, COLOR_PANEL);
+  tft.drawRoundRect(184, 40, 128, 84, 8, COLOR_BATT);
+  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
+  tft.setTextSize(1);
+  tft.setCursor(194, 48);
+  tft.print("BATTERY");
+
+  // กล่องเจนเนอเรเตอร์ (ขวาล่าง)
+  tft.fillRoundRect(184, 132, 128, 76, 8, COLOR_PANEL);
+  tft.drawRoundRect(184, 132, 128, 76, 8, COLOR_GEN);
+  tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
+  tft.setTextSize(1);
+  tft.setCursor(194, 140);
+  tft.print("GENERATOR");
+
+  lastDrawnBatt = -999;
+  lastDrawnGen  = -999.0f;
+}
+
+void drawIdleValues() {
+  // ---- แบตเตอรี่ ----
+  if (batteryPercent != lastDrawnBatt) {
+    lastDrawnBatt = batteryPercent;
+
+    tft.fillRect(192, 62, 112, 52, COLOR_PANEL);
+
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%d%%", batteryPercent);
+    tft.setTextColor(COLOR_BATT, COLOR_PANEL);
+    tft.setTextSize(3);
+    tft.setCursor(194, 64);
+    tft.print(buf);
+
+    snprintf(buf, sizeof(buf), "%.2f V", batteryVoltage);
+    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
+    tft.setTextSize(1);
+    tft.setCursor(194, 96);
+    tft.print(buf);
+  }
+
+  // ---- เจนเนอเรเตอร์ ----
+  if (fabs(generatorVoltage - lastDrawnGen) > 0.005f) {
+    lastDrawnGen = generatorVoltage;
+
+    tft.fillRect(192, 154, 112, 46, COLOR_PANEL);
+
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%.1f", generatorVoltage);
+    tft.setTextColor(COLOR_GEN, COLOR_PANEL);
+    tft.setTextSize(3);
+    tft.setCursor(194, 156);
+    tft.print(buf);
+
+    tft.setTextColor(COLOR_MUTED, COLOR_PANEL);
+    tft.setTextSize(1);
+    tft.setCursor(194, 186);
+    tft.print("VOLT");
+  }
+}
+
+// ---------- หน้า "กำลังชาร์จ" : นับถอยหลังตัวใหญ่ ----------
+void drawChargingStatic() {
+  tft.fillRect(0, 32, 320, 192, COLOR_BG);
+  drawHeaderBar();
+
+  printCentered("CHARGING", 48, 3, COLOR_OK, COLOR_BG);
+  printCentered("TIME REMAINING", 178, 1, COLOR_MUTED, COLOR_BG);
+
+  lastDrawnSec  = -999;
+  lastDrawnBatt = -999;
+}
+
+void drawChargingValues() {
+  // ---- ตัวเลขนับถอยหลัง ----
+  if (remainingSeconds != lastDrawnSec) {
+    lastDrawnSec = remainingSeconds;
+
+    long total = remainingSeconds > 0 ? remainingSeconds : 0;
+    long m = total / 60;
+    long s = total % 60;
+
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%02ld:%02ld", m, s);
+
+    tft.fillRect(0, 88, 320, 76, COLOR_BG);
+
+    // เหลือน้อยกว่า 1 นาที เปลี่ยนเป็นสีส้มเตือน
+    uint16_t c = (total <= 60) ? COLOR_BATT : COLOR_OK;
+    printCentered(buf, 92, 6, c, COLOR_BG);
+  }
+
+  // ---- แถบข้อมูลแบตด้านล่าง ----
+  if (batteryPercent != lastDrawnBatt) {
+    lastDrawnBatt = batteryPercent;
+
+    char buf[40];
+    snprintf(buf, sizeof(buf), "Battery %d%%   Gen %.1fV", batteryPercent, generatorVoltage);
+
+    tft.fillRect(0, 198, 320, 18, COLOR_BG);
+    printCentered(buf, 200, 1, COLOR_MUTED, COLOR_BG);
+  }
+}
+
+// ---------- หน้ารอข้อมูล / บอร์ดคุมสถานีหาย ----------
+void drawWaitStatic() {
+  tft.fillRect(0, 32, 320, 192, COLOR_BG);
+  drawHeaderBar();
+  printCentered("Waiting for data...", 110, 2, COLOR_MUTED, COLOR_BG);
+}
+
+void drawOfflineStatic() {
+  tft.fillRect(0, 32, 320, 192, COLOR_BG);
+  drawHeaderBar();
+  printCentered("CONTROLLER OFFLINE", 100, 2, TFT_RED, COLOR_BG);
+  printCentered("No update from station board", 130, 1, COLOR_MUTED, COLOR_BG);
+}
+
+// ---------- ตัวสลับหน้าจอ ----------
+void updateScreen() {
+  bool stale = haveData && (millis() - lastDataMs > STALE_MS);
+
+  ScreenMode want;
+  if (!haveData)                            want = SCREEN_WAIT;
+  else if (stale)                           want = SCREEN_OFFLINE;
+  else if (charging && remainingSeconds > 0) want = SCREEN_CHARGING;
+  else                                       want = SCREEN_IDLE;
+
+  // เปลี่ยนหน้า -> วาดโครงใหม่ทั้งหน้า
+  if (want != currentScreen) {
+    currentScreen = want;
+    switch (want) {
+      case SCREEN_IDLE:     drawIdleStatic();     break;
+      case SCREEN_CHARGING: drawChargingStatic(); break;
+      case SCREEN_OFFLINE:  drawOfflineStatic();  break;
+      default:              drawWaitStatic();     break;
+    }
+    Serial.printf("เปลี่ยนหน้าจอ -> %d\n", (int)want);
+  }
+
+  // วาดเฉพาะตัวเลขที่เปลี่ยน (กันจอกะพริบ)
+  if (currentScreen == SCREEN_IDLE)     drawIdleValues();
+  if (currentScreen == SCREEN_CHARGING) drawChargingValues();
+
+  drawWifiBar();
+}
+
 // ============================================================
-// ส่วนที่ 8 : WiFi
+// ส่วนที่ 10 : WiFi
 // ============================================================
 
 void wifiConnectAtBoot() {
@@ -356,16 +504,14 @@ void setup() {
   ledcWrite(0, 255);
 #endif
 
-  tft.setTextColor(COLOR_TEXT, COLOR_BG);
-  tft.setTextSize(2);
-  tft.setCursor(10, 100);
-  tft.print("Connecting WiFi...");
+  drawHeaderBar();
+  printCentered("Connecting WiFi...", 110, 2, COLOR_TEXT, COLOR_BG);
 
+  buildQR();          // สร้าง QR เก็บไว้ในหน่วยความจำ ทำครั้งเดียวพอ
   wifiConnectAtBoot();
 
-  drawStaticLayout();
   pollFirebase();
-  drawValues();
+  updateScreen();
 
   lastPollMs   = millis();
   lastScreenMs = millis();
@@ -389,11 +535,17 @@ void loop() {
   if (charging && remainingSeconds > 0 && (now - lastTickMs >= 1000)) {
     lastTickMs += 1000;
     remainingSeconds--;
+
+    // หมดเวลาแล้ว -> เด้งกลับหน้า QR ทันที ไม่ต้องรอรอบ poll ถัดไป
+    if (remainingSeconds <= 0) {
+      remainingSeconds = 0;
+      charging = false;
+    }
   }
 
-  // --- วาดจอใหม่ ---
+  // --- อัปเดตหน้าจอ ---
   if (now - lastScreenMs >= SCREEN_INTERVAL) {
     lastScreenMs = now;
-    drawValues();
+    updateScreen();
   }
 }

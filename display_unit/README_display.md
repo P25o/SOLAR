@@ -15,6 +15,17 @@
 
 ---
 
+## ⚠️ ต้องติดตั้งไลบรารี QRCode เพิ่ม
+
+หน้าจอเวอร์ชันใหม่แสดง QR ให้ลูกค้าสแกน จึงต้องมีไลบรารีสร้าง QR
+
+Arduino IDE → **Sketch → Include Library → Manage Libraries** → ค้นหา **`QRCode`**
+→ เลือกอันที่ผู้พัฒนาชื่อ **Richard Moore** → **Install**
+
+> ถ้าไม่ลง จะขึ้น error ว่า `qrcode.h: No such file or directory`
+
+---
+
 ## ขั้นที่ 1 — ติดตั้งไลบรารี
 
 Arduino IDE → **Sketch → Include Library → Manage Libraries** → ค้นหา **`TFT_eSPI`** (ของ Bodmer) → **Install**
